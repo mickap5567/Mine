@@ -1,0 +1,2 @@
+# Mine
+EA SCALPER GOLD 2026
