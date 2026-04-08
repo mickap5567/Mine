@@ -1,0 +1,92 @@
+run:
+  out_dir: artifacts
+  run_name: "tcn_xauusd"
+  seed: 42
+
+data:
+  raw_glob: "data/raw/*.csv"
+  time_column_candidates: ["time", "Time", "DATE", "Date", "datetime", "Datetime", "timestamp", "Timestamp"]
+  tz: "UTC"                # interpret timestamps as UTC unless CSV includes tz info
+  timeframe_seconds: null  # optional: if provided, can validate/repair gaps more strictly
+
+  # Windowing
+  lookback: 256            # bars per sample (TCN receptive field driver)
+  horizon: 12              # forward bars used to label the current bar
+  stride: 1                # step between windows
+
+  # Train/val/test split by time (no leakage)
+  split:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+labels:
+  scheme: "forward_logret_threshold"
+  forward_return_threshold: 0.0006  # ~6 bps; tune for XAUUSD timeframe/spread
+  class_order: ["SELL", "NEUTRAL", "BUY"]
+
+features:
+  # Core engineered features
+  use_log_returns: true
+
+  kama:
+    enabled: true
+    length: 21
+    fast: 2
+    slow: 30
+    slope_lookback: 5   # slope = (kama[t] - kama[t-slope_lookback]) / slope_lookback
+
+  # Kill zones encoded as sin/cos of time-within-zone
+  kill_zones:
+    enabled: true
+    market_tz: "America/New_York"   # for session logic
+    london:
+      start: "02:00"   # NY time (handles DST automatically via timezone)
+      end:   "05:00"
+    newyork:
+      start: "08:00"
+      end:   "11:00"
+
+  # Optional raw OHLC normalized features
+  include_ohlc_features: true
+
+  # Multi-timeframe "Master Trend" context derived from M15 bars (built from the same M1 stream).
+  # The value is aligned back to M1 bars using "last completed M15 bar" (no lookahead).
+  master_trend:
+    enabled: true
+    timeframe: "15T"      # pandas offset alias for 15 minutes
+    kama_length: 21
+    fast: 2
+    slow: 30
+    slope_lookback: 3     # slope in M15 bars: (kama[t]-kama[t-n])/n
+
+labels:
+  # Optional hard rule matching runtime gating:
+  # if enabled, BUY labels are downgraded to NEUTRAL whenever master_trend slope <= 0.
+  apply_master_trend_buy_filter: true
+
+model:
+  tcn:
+    num_blocks: 6
+    filters: 64
+    kernel_size: 3
+    dropout: 0.15
+    use_batch_norm: true
+    activation: "relu"
+
+  head:
+    dense_units: 64
+    dropout: 0.20
+
+train:
+  batch_size: 256
+  epochs: 40
+  lr: 0.0008
+  weight_decay: 0.0
+  early_stopping_patience: 7
+  reduce_lr_patience: 3
+  class_weight: true
+
+export:
+  onnx_opset: 13
+  dynamic_batch: true

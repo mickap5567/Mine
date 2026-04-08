@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+artifacts/
+
+# Datasets: keep empty raw/ layout; ignore CSV exports
+data/raw/*
+!data/raw/.gitkeep
+
+# MT5 artifacts / exports
+*.ex5
+*.log
